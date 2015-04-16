@@ -23,7 +23,7 @@ Given `google.json`
 ``` json
 {
   "/search": {
-    "url": "https://www.google.com/search?q={{q}}"
+    "url": "https://www.google.com/search?q={{q}}",
     "list": "#search ol > li",
     "item": {
       "title": "h3 a",
@@ -47,7 +47,7 @@ $ curl localhost:3000/search?q=helloworld
 
 ### Configuration
 
-``` json
+``` plain
 {
   <path>: {
     "url": <url>
