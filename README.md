@@ -14,7 +14,7 @@ Similar project https://github.com/ernesto-jimenez/scraperboard
 
 * Single binary
 * Simple configuration
-* Zero-downtime reload with `SIGHUP`
+* Zero-downtime config reload with `SIGHUP`
 
 ### Quick Example
 
