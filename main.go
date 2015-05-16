@@ -10,9 +10,12 @@ import (
 	"github.com/jpillora/scraper/lib"
 )
 
+var VERSION = "0.0.0"
+
 func main() {
 	s := &scraper.Server{Host: "0.0.0.0", Port: 3000}
-	opts.Parse(s)
+
+	opts.New(s).PkgRepo().Version(VERSION).Parse()
 
 	go func() {
 		for {
