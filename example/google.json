@@ -2,9 +2,9 @@
   "/search": {
     "url": "https://www.google.com/search?q={{q}}",
     "list": "#search ol > li",
-    "item": {
-      "title": "h3 a",
-      "url": ["h3 a","@href"]
+    "result": {
+      "title": "li > h3 a",
+      "url": ["li > h3 a", "@href", "/^\\/url\\?q=([^&]+)/"]
     }
   }
 }

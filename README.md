@@ -1,20 +1,24 @@
 # scraper
 
-A configuration based HTML to JSON API server
-
-:warning: In progress
-
----
-
-Similar project https://github.com/ernesto-jimenez/scraperboard
-
----
+A configuration based, HTML ⇒ JSON API server
 
 ### Features
 
 * Single binary
 * Simple configuration
-* Zero-downtime config reload with `SIGHUP`
+* Zero-downtime config reload with `kill -s SIGHUP <scraper-pid>`
+
+### Install
+
+**Binaries**
+
+See [the latest release](https://github.com/jpillora/scraper/releases/latest) or download it with this one-liner: `curl i.jpillora.com/scraper | bash`
+
+**Source**
+
+``` sh
+$ go get -v github.com/jpillora/scraper
+```
 
 ### Quick Example
 
@@ -25,9 +29,9 @@ Given `google.json`
   "/search": {
     "url": "https://www.google.com/search?q={{q}}",
     "list": "#search ol > li",
-    "item": {
-      "title": "h3 a",
-      "url": ["h3 a","@href"]
+    "result": {
+      "title": "li > h3 a",
+      "url": ["li >> h3 a", "@href", "/^\\/url\\?q=([^&]+)/"]
     }
   }
 }
@@ -35,14 +39,21 @@ Given `google.json`
 
 ``` sh
 $ scraper google.json
-listening on 3000...
+2015/05/16 20:10:46 listening on 3000...
 ```
 
 ``` sh
-$ curl localhost:3000/search?q=helloworld
-# [
-#  json results...
-# ]
+$ curl "localhost:3000/search?q=hellokitty"
+[
+  {
+    "title": "Official Home of Hello Kitty \u0026 Friends | Hello Kitty Shop",
+    "url": "http://www.sanrio.com/"
+  },
+  {
+    "title": "Hello Kitty - Wikipedia, the free encyclopedia",
+    "url": "http://en.wikipedia.org/wiki/Hello_Kitty"
+  },
+  ...
 ```
 
 ### Configuration
@@ -52,9 +63,9 @@ $ curl localhost:3000/search?q=helloworld
   <path>: {
     "url": <url>
     "list": <selector>,
-    "item": {
-      <field>: <selector>,
-      <field>: <selector>,
+    "result": {
+      <field>: <extractor>,
+      <field>: [<extractor>, <extractor>, ...],
       ...
     }
   }
@@ -63,19 +74,18 @@ $ curl localhost:3000/search?q=helloworld
 
 * `<path>` - **Required** The URI path of this scraper GET endpoint
   * You may define path variables like: `/my/path/:var` when set to `/my/path/foo` then `:var = "foo"`
-* `<url>` - **Required** The URL of the remote server
+* `<url>` - **Required** The URL of the remote scraperr
   * It may contain template variables in the form `{{ var }}`, scraper will look for a `var` path variable, if not found, it will then look for a query parameter `var`
-* `list` - **Optional** When defined, a JSON array will be returned with each `item`, where each element selected is used as the DOM root.
-* `item` - **Required** Returns a JSON object with each field defined using their corresponding selectors.
-  * Uses the first item from the selection
-* `<selector>` - Returns a string by parsing the provided config
-  * array selectors must contain a series of string selectors
-  * string selectors are parsed in the following order:
-    * `/abc/` is viewed as a regexp
-    * `abc` is viewed as a CSS selector
-    * `@abc` is viewed as an attribute name
-    * resulting DOM nodes are converted to strings using their text value
+* `result` - **Required** represents the resulting JSON object, after executing the `<extractor>` on the current DOM context. 
+* `<extractor>` - A string in which must be one of:
+  * a regex in form `/abc/` - searches the text of the current DOM context.
+  * an attribute in the form `@abc` - gets the attribute `abc` from the DOM context.
+  * a css selector `abc` (if not in the forms above) alters the DOM context.
+* `list` - **Optional** A css selector used to create more DOM contexts.
 
+#### Similar projects
+
+*  https://github.com/ernesto-jimenez/scraperboard
 
 #### MIT License
 
