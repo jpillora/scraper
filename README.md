@@ -31,7 +31,7 @@ Given `google.json`
     "list": "#search ol > li",
     "result": {
       "title": "li > h3 a",
-      "url": ["li >> h3 a", "@href", "/^\\/url\\?q=([^&]+)/"]
+      "url": ["li > h3 a", "@href", "/^\\/url\\?q=([^&]+)/"]
     }
   }
 }
@@ -77,10 +77,10 @@ $ curl "localhost:3000/search?q=hellokitty"
 * `<url>` - **Required** The URL of the remote scraperr
   * It may contain template variables in the form `{{ var }}`, scraper will look for a `var` path variable, if not found, it will then look for a query parameter `var`
 * `result` - **Required** represents the resulting JSON object, after executing the `<extractor>` on the current DOM context. A field may use sequence of `<extractor>`s to perform more complex queries.
-* `<extractor>` - A string in which must be one of:
-  * a regex in form `/abc/` - searches the text of the current DOM context.
-  * an attribute in the form `@abc` - gets the attribute `abc` from the DOM context.
-  * a css selector `abc` (if not in the forms above) alters the DOM context.
+* `<extractor>` - Must be:
+  * a regex in form `"/abc/"` - searches the text of the current DOM context.
+  * an attribute in the form `"@abc"` - gets the attribute `abc` from the current DOM context.
+  * a css selector `"abc"` (if not in the forms above) performs a `find(...)` on the current DOM context.
 * `list` - **Optional** A css selector used to split the root DOM context into a set of DOM contexts. Useful for capturing search results.
 
 #### Similar projects
