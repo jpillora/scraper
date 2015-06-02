@@ -72,15 +72,15 @@ $ curl "localhost:3000/search?q=hellokitty"
 }
 ```
 
-* `<path>` - **Required** The URI path of this scraper GET endpoint
+* `<path>` - **Required** The URL of this scraper endpoint
   * You may define path variables like: `/my/path/:var` when set to `/my/path/foo` then `:var = "foo"`
 * `<url>` - **Required** The URL of the remote scraperr
   * It may contain template variables in the form `{{ var }}`, scraper will look for a `var` path variable, if not found, it will then look for a query parameter `var`
 * `result` - **Required** represents the resulting JSON object, after executing the `<extractor>` on the current DOM context. A field may use sequence of `<extractor>`s to perform more complex queries.
-* `<extractor>` - Must be:
-  * a regex in form `"/abc/"` - searches the text of the current DOM context.
-  * an attribute in the form `"@abc"` - gets the attribute `abc` from the current DOM context.
-  * a css selector `"abc"` (if not in the forms above) performs a `find(...)` on the current DOM context.
+* `<extractor>` - A string in which must be one of:
+  * a regex in form `/abc/` - searches the text of the current DOM context.
+  * an attribute in the form `@abc` - gets the attribute `abc` from the DOM context.
+  * a css selector `abc` (if not in the forms above) alters the DOM context.
 * `list` - **Optional** A css selector used to split the root DOM context into a set of DOM contexts. Useful for capturing search results.
 
 #### Similar projects

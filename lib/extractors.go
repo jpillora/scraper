@@ -93,10 +93,11 @@ var generatorsPre = map[string]extractorGenerator{
 			return nil, fmt.Errorf("Invalid regex '%s': %s", reStr, err)
 		}
 		return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
-			if value == "" {
-				value = sel.Text()
+			ctx := value
+			if ctx == "" {
+				ctx, _ = sel.Html()
 			}
-			m := re.FindStringSubmatch(value)
+			m := re.FindStringSubmatch(ctx)
 			if len(m) == 0 {
 				value = ""
 			} else if m[1] != "" {

@@ -6,8 +6,6 @@ import (
 	"log"
 	"net/http"
 
-	"strconv"
-
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -17,46 +15,33 @@ type result map[string]string
 //the configuration file
 type config map[string]*endpoint
 
-type Server struct {
-	//config
-	Host       string `help:"Listening interface"`
-	Port       int    `help:"Listening port"`
-	ConfigFile string `type:"arg" help:"Path to JSON configuration file"`
-	//state
+type Handler struct {
+	Logs   bool
 	config config
 }
 
-func (s *Server) Run() error {
-	if err := s.ReloadConfigFile(); err != nil {
+func (h *Handler) LoadConfigFile(path string) error {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
 		return err
 	}
-	addr := s.Host + ":" + strconv.Itoa(s.Port)
-	h := http.Server{Addr: addr, Handler: http.HandlerFunc(s.handle)}
-	log.Printf("listening on %d...", s.Port)
-	return h.ListenAndServe()
+	return h.LoadConfig(b)
 }
 
-func (s *Server) ReloadConfigFile() error {
-	b, err := ioutil.ReadFile(s.ConfigFile)
-	if err != nil {
-		return err
-	}
-
+func (h *Handler) LoadConfig(b []byte) error {
 	c := config{}
-	err = json.Unmarshal(b, &c)
-	if err != nil {
+	if err := json.Unmarshal(b, &c); err != nil {
 		return err
 	}
-
 	//replace config
-	s.config = c
+	h.config = c
 	return nil
 }
 
-func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
-	for path, e := range s.config {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	for path, e := range h.config {
 		if r.URL.Path == string(path) {
-			s.execute(e, w, r)
+			h.execute(e, w, r)
 			return
 		}
 	}
@@ -64,7 +49,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Not found"))
 }
 
-func (s *Server) execute(e *endpoint, w http.ResponseWriter, r *http.Request) {
+func (h *Handler) execute(e *endpoint, w http.ResponseWriter, r *http.Request) {
 
 	url, err := template(e.URL, r.URL.Query())
 	if err != nil {
@@ -80,7 +65,9 @@ func (s *Server) execute(e *endpoint, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("GET %s => %s", url, resp.Status)
+	if h.Logs {
+		log.Printf("scraper GET %s => %s", url, resp.Status)
+	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -94,7 +81,8 @@ func (s *Server) execute(e *endpoint, w http.ResponseWriter, r *http.Request) {
 	//out will be either a list of results, or a single result
 	if e.List != "" {
 		var results []result
-		sel.Find(e.List).Each(func(i int, sel *goquery.Selection) {
+		sels := sel.Find(e.List)
+		sels.Each(func(i int, sel *goquery.Selection) {
 			r := e.extract(sel)
 			if len(r) == len(e.Result) {
 				results = append(results, r)

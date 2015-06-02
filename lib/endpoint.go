@@ -14,8 +14,9 @@ func (e *endpoint) extract(sel *goquery.Selection) result {
 	for field, ext := range e.Result {
 		if v := ext.execute(sel); v != "" {
 			r[field] = v
-			// log.Printf("%s: %s", field, v)
-		}
+		} /* else {
+			log.Printf("missing %s", field)
+		}*/
 	}
 	return r
 }

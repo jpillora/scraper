@@ -2,8 +2,10 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/jpillora/opts"
@@ -12,17 +14,29 @@ import (
 
 var VERSION = "0.0.0"
 
-func main() {
-	s := &scraper.Server{Host: "0.0.0.0", Port: 3000}
+type config struct {
+	ConfigFile string `type:"arg" help:"Path to JSON configuration file"`
+	Host       string `help:"Listening interface"`
+	Port       int    `help:"Listening port"`
+}
 
-	opts.New(s).PkgRepo().Version(VERSION).Parse()
+func main() {
+
+	c := config{
+		Host: "0.0.0.0",
+		Port: 3000,
+	}
+
+	opts.New(&c).Repo("github.com/jpillora/scraper").Version(VERSION).Parse()
+
+	h := &scraper.Handler{}
 
 	go func() {
 		for {
-			c := make(chan os.Signal, 1)
-			signal.Notify(c, syscall.SIGHUP)
-			<-c
-			if err := s.ReloadConfigFile(); err != nil {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, syscall.SIGHUP)
+			<-sig
+			if err := h.LoadConfigFile(c.ConfigFile); err != nil {
 				log.Printf("failed to load configuration: %s", err)
 			} else {
 				log.Printf("successfully loaded new configuration")
@@ -30,5 +44,10 @@ func main() {
 		}
 	}()
 
-	log.Fatal(s.Run())
+	if err := h.LoadConfigFile(c.ConfigFile); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("listening on %d...", c.Port)
+	log.Fatal(http.ListenAndServe(c.Host+":"+strconv.Itoa(c.Port), h))
 }
