@@ -2,9 +2,13 @@ package scraper
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -13,11 +17,12 @@ import (
 type result map[string]string
 
 //the configuration file
-type config map[string]*endpoint
+type Config map[string]*Endpoint
 
 type Handler struct {
-	Logs   bool
-	config config
+	Auth   string
+	Log    bool
+	Config Config
 }
 
 func (h *Handler) LoadConfigFile(path string) error {
@@ -29,51 +34,125 @@ func (h *Handler) LoadConfigFile(path string) error {
 }
 
 func (h *Handler) LoadConfig(b []byte) error {
-	c := config{}
+	c := Config{}
+	//json unmarshal performs selector validation
 	if err := json.Unmarshal(b, &c); err != nil {
 		return err
 	}
 	//replace config
-	h.config = c
+	h.Config = c
 	return nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	for path, e := range h.config {
-		if r.URL.Path == string(path) {
-			h.execute(e, w, r)
+	defer r.Body.Close()
+
+	//basic auth
+	if h.Auth != "" {
+		u, p, _ := r.BasicAuth()
+		if h.Auth != u+":"+p {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Access Denied"))
 			return
 		}
 	}
+
+	//always JSON!
+	w.Header().Set("Content-Type", "application/json")
+
+	//admin actions
+	if r.URL.Path == "" || r.URL.Path == "/" {
+		get := false
+		if r.Method == "GET" {
+			get = true
+		} else if r.Method == "POST" {
+			b, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write(jsonerr(err))
+				return
+			}
+			if err := h.LoadConfig(b); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write(jsonerr(err))
+				return
+			}
+			get = true
+		}
+
+		if !get {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			w.Write(jsonerr(errors.New("Use GET or POST")))
+		}
+		b, _ := json.MarshalIndent(h.Config, "", "  ")
+		w.Write(b)
+		return
+	}
+	//search actions
+	id := r.URL.Path[1:]
+	if e, ok := h.Config[id]; ok {
+		h.execute(e, w, r)
+		return
+	}
 	w.WriteHeader(404)
-	w.Write([]byte("Not found"))
+	w.Write(jsonerr(fmt.Errorf("Endpoint '%s' not found", id)))
 }
 
-func (h *Handler) execute(e *endpoint, w http.ResponseWriter, r *http.Request) {
+func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
 
-	url, err := template(e.URL, r.URL.Query())
+	values := r.URL.Query()
+
+	url, err := template(true, e.URL, values)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		w.Write(jsonerr(err))
 		return
 	}
 
-	resp, err := http.Get(url)
+	method := e.Method
+	if method == "" {
+		method = "GET"
+	}
+
+	body := io.Reader(nil)
+	if e.Body != "" {
+		if s, err := template(true, e.Body, values); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write(jsonerr(err))
+			return
+		} else {
+			body = strings.NewReader(s)
+		}
+	}
+
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write(jsonerr(err))
 		return
 	}
 
-	if h.Logs {
-		log.Printf("scraper GET %s => %s", url, resp.Status)
+	if e.Headers != nil {
+		for k, v := range e.Headers {
+			req.Header.Set(k, v)
+		}
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(jsonerr(err))
+		return
+	}
+
+	if h.Log {
+		log.Printf("scraper %s %s => %s", method, url, resp.Status)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-		return
+		w.Write(jsonerr(err))
 	}
 	sel := doc.Selection
 

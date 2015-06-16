@@ -9,22 +9,61 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-type extractor func(string, *goquery.Selection) (string, *goquery.Selection)
+type Extractor struct {
+	val string
+	fn  extractorFn
+}
 
-type extractorGenerator func(string) (extractor, error)
+func NewExtractor(value string) (*Extractor, error) {
+	e := &Extractor{}
+	if err := e.Set(value); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
 
-type extractors []extractor
+func MustExtractor(value string) *Extractor {
+	e := &Extractor{}
+	if err := e.Set(value); err != nil {
+		panic(err)
+	}
+	return e
+}
 
-//execute all extractors on the query
-func (ex extractors) execute(s *goquery.Selection) string {
+//sets the current string Value as the Extractor function
+func (e *Extractor) Set(value string) (err error) {
+	for re, generator := range generators {
+		m := re.FindStringSubmatch(value)
+		if len(m) > 0 {
+			if len(m) > 1 {
+				value = m[1]
+			}
+			e.val = value
+			e.fn, err = generator(value)
+			return
+		}
+	}
+	e.val = value
+	e.fn, err = defaultGenerator(value)
+	return
+}
+
+type extractorFn func(string, *goquery.Selection) (string, *goquery.Selection)
+
+type extractorGenerator func(string) (extractorFn, error)
+
+type Extractors []*Extractor
+
+//execute all Extractors on the query
+func (ex Extractors) execute(s *goquery.Selection) string {
 	v := ""
 	for _, e := range ex {
-		v, s = e(v, s)
+		v, s = e.fn(v, s)
 	}
 	return v
 }
 
-func (ex *extractors) UnmarshalJSON(data []byte) error {
+func (ex *Extractors) UnmarshalJSON(data []byte) error {
 	//force array
 	if bytes.IndexRune(data, '[') != 0 {
 		data = append([]byte{'['}, append(data, ']')...)
@@ -34,35 +73,29 @@ func (ex *extractors) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &strs); err != nil {
 		return err
 	}
-	//reset extractors
-	*ex = make(extractors, len(strs))
+	//reset Extractors
+	*ex = make(Extractors, len(strs))
 	//convert all strings
 	for i, s := range strs {
-		fn, err := ex.convert(s)
-		if err != nil {
+		e := &Extractor{}
+		if err := e.Set(s); err != nil {
 			return err
 		}
-		(*ex)[i] = fn
+		(*ex)[i] = e
 	}
 	return nil
 }
 
-//convert strings into extractor functions
-func (e *extractors) convert(s string) (extractor, error) {
-	for re, generator := range generators {
-		m := re.FindStringSubmatch(s)
-		if len(m) > 0 {
-			if len(m) > 1 {
-				s = m[1]
-			}
-			return generator(s)
-		}
+func (ex Extractors) MarshalJSON() ([]byte, error) {
+	strs := make([]string, len(ex))
+	for i, e := range ex {
+		strs[i] = e.val
 	}
-	return defaultGenerator(s)
+	return json.Marshal(strs)
 }
 
-//selector extractor
-var defaultGenerator = func(selstr string) (extractor, error) {
+//selector Extractor
+var defaultGenerator = func(selstr string) (extractorFn, error) {
 	if err := checkSelector(selstr); err != nil {
 		return nil, fmt.Errorf("Invalid selector: %s", err)
 	}
@@ -77,8 +110,8 @@ var defaultGenerator = func(selstr string) (extractor, error) {
 
 var generatorsPre = map[string]extractorGenerator{
 	//attr generator
-	`^@(.+)`: func(attr string) (extractor, error) {
-		//make attribute extractor
+	`^@(.+)`: func(attr string) (extractorFn, error) {
+		//make attribute Extractor
 		return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 			value, _ = sel.Attr(attr)
 			// h, _ := sel.Html()
@@ -87,7 +120,7 @@ var generatorsPre = map[string]extractorGenerator{
 		}, nil
 	},
 	//regex generator
-	`^\/(.+)\/$`: func(reStr string) (extractor, error) {
+	`^\/(.+)\/$`: func(reStr string) (extractorFn, error) {
 		re, err := regexp.Compile(reStr)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid regex '%s': %s", reStr, err)
@@ -109,7 +142,7 @@ var generatorsPre = map[string]extractorGenerator{
 		}, nil
 	},
 	//first() generator
-	`^first\(\)$`: func(_ string) (extractor, error) {
+	`^first\(\)$`: func(_ string) (extractorFn, error) {
 		return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 			return value, sel.First()
 		}, nil
