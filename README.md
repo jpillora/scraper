@@ -26,7 +26,7 @@ Given `google.json`
 
 ``` json
 {
-  "/search": {
+  "search": {
     "url": "https://www.google.com/search?q={{q}}",
     "list": "#search ol > li",
     "result": {

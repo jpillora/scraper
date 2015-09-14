@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -102,7 +103,15 @@ var defaultGenerator = func(selstr string) (extractorFn, error) {
 	return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 		s := sel.Find(selstr)
 		if value == "" {
-			value = s.Text()
+			if l := s.Length(); l == 1 {
+				value = s.Text()
+			} else if l > 1 {
+				strs := make([]string, l)
+				s.Each(func(i int, s *goquery.Selection) {
+					strs[i] = s.Text()
+				})
+				value = strings.Join(strs, ",")
+			}
 		}
 		return value, s
 	}, nil

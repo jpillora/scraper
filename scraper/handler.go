@@ -39,6 +39,11 @@ func (h *Handler) LoadConfig(b []byte) error {
 	if err := json.Unmarshal(b, &c); err != nil {
 		return err
 	}
+	if h.Log {
+		for e, _ := range c {
+			log.Printf("Loaded enpoint: %s", e)
+		}
+	}
 	//replace config
 	h.Config = c
 	return nil

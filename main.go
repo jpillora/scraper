@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/jpillora/opts"
-	"github.com/jpillora/scraper/lib"
+	"github.com/jpillora/scraper/scraper"
 )
 
 var VERSION = "0.0.0"
@@ -27,9 +27,12 @@ func main() {
 		Port: 3000,
 	}
 
-	opts.New(&c).Repo("github.com/jpillora/scraper").Version(VERSION).Parse()
+	opts.New(&c).
+		Repo("github.com/jpillora/scraper").
+		Version(VERSION).
+		Parse()
 
-	h := &scraper.Handler{}
+	h := &scraper.Handler{Log: true}
 
 	go func() {
 		for {
