@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"strings"
@@ -56,4 +57,8 @@ func checkSelector(s string) (err error) {
 
 func jsonerr(err error) []byte {
 	return []byte(`{"error":"` + err.Error() + `"}`)
+}
+
+func logf(format string, args ...interface{}) {
+	log.Printf("[scraper] "+format, args...)
 }

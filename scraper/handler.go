@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 
@@ -20,9 +19,10 @@ type result map[string]string
 type Config map[string]*Endpoint
 
 type Handler struct {
-	Auth   string
-	Log    bool
-	Config Config
+	Config Config `opts:"-"`
+	Auth   string `help:"Basic auth credentials <user>:<pass>"`
+	Log    bool   `opts:"-"`
+	Debug  bool   `help:"Enable debug output"`
 }
 
 func (h *Handler) LoadConfigFile(path string) error {
@@ -40,9 +40,18 @@ func (h *Handler) LoadConfig(b []byte) error {
 		return err
 	}
 	if h.Log {
-		for e, _ := range c {
-			log.Printf("Loaded enpoint: %s", e)
+		for k, e := range c {
+			if strings.HasPrefix(k, "/") {
+				delete(c, k)
+				k = strings.TrimPrefix(k, "/")
+				c[k] = e
+			}
+			logf("Loaded endpoint: /%s", k)
+			e.debug = h.Debug
 		}
+	}
+	if h.Debug {
+		logf("Enabled debug mode")
 	}
 	//replace config
 	h.Config = c
@@ -94,13 +103,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//search actions
-	id := r.URL.Path[1:]
+	id := r.URL.Path[1:] //exclude root slash
 	if e, ok := h.Config[id]; ok {
 		h.execute(e, w, r)
 		return
 	}
 	w.WriteHeader(404)
-	w.Write(jsonerr(fmt.Errorf("Endpoint '%s' not found", id)))
+	w.Write(jsonerr(fmt.Errorf("Endpoint /%s not found", id)))
 }
 
 func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
@@ -151,7 +160,7 @@ func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.Log {
-		log.Printf("scraper %s %s => %s", method, url, resp.Status)
+		logf("%s %s => %s", method, url, resp.Status)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
@@ -166,17 +175,21 @@ func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
 	if e.List != "" {
 		var results []result
 		sels := sel.Find(e.List)
+		if h.Debug {
+			logf("list: %s => #%d elements", e.List, sels.Length())
+		}
 		sels.Each(func(i int, sel *goquery.Selection) {
 			r := e.extract(sel)
 			if len(r) == len(e.Result) {
 				results = append(results, r)
+			} else if h.Debug {
+				logf("excluded #%d: has %d fields, expected %d", i, len(r), len(e.Result))
 			}
 		})
 		out = results
 	} else {
 		out = e.extract(sel)
 	}
-
 	b, _ := json.MarshalIndent(out, "", "  ")
 	w.Write(b)
 }

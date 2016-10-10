@@ -26,12 +26,12 @@ Given `google.json`
 
 ``` json
 {
-  "search": {
-    "url": "https://www.google.com/search?q={{q}}",
-    "list": "#search ol > li",
+  "/search": {
+    "url": "https://www.google.com/search?q={{query}}",
+    "list": "#res div[class=g]",
     "result": {
-      "title": "li > h3 a",
-      "url": ["li > h3 a", "@href", "/^\\/url\\?q=([^&]+)/"]
+      "title": "h3 a",
+      "url": ["h3 a", "@href", "query-param(q)"]
     }
   }
 }
@@ -43,7 +43,7 @@ $ scraper google.json
 ```
 
 ``` sh
-$ curl "localhost:3000/search?q=hellokitty"
+$ curl "localhost:3000/search?query=hellokitty"
 [
   {
     "title": "Official Home of Hello Kitty \u0026 Friends | Hello Kitty Shop",
@@ -72,14 +72,17 @@ $ curl "localhost:3000/search?q=hellokitty"
 }
 ```
 
-* `<path>` - **Required** The URL of this scraper endpoint
-  * You may define path variables like: `/my/path/:var` when set to `/my/path/foo` then `:var = "foo"`
-* `<url>` - **Required** The URL of the remote scraperr
+* `<path>` - **Required** The path of the scraper
+  * Accessible at `http://<host>:port/<path>`
+  * You may define path variables like: `my/path/:var` when set to `/my/path/foo` then `:var = "foo"`
+* `<url>` - **Required** The URL of the remote server to scrape
   * It may contain template variables in the form `{{ var }}`, scraper will look for a `var` path variable, if not found, it will then look for a query parameter `var`
 * `result` - **Required** represents the resulting JSON object, after executing the `<extractor>` on the current DOM context. A field may use sequence of `<extractor>`s to perform more complex queries.
 * `<extractor>` - A string in which must be one of:
-  * a regex in form `/abc/` - searches the text of the current DOM context.
+  * a regex in form `/abc/` - searches the text of the current DOM context (extracts the first group when provided).
+  * a regex in form `s/abc/xyz/` - searches the text of the current DOM context and replaces with the provided text (sed-like syntax).
   * an attribute in the form `@abc` - gets the attribute `abc` from the DOM context.
+  * a query param in the form `query-param(abc)` - parses the current context as a URL and extracts the provided param
   * a css selector `abc` (if not in the forms above) alters the DOM context.
 * `list` - **Optional** A css selector used to split the root DOM context into a set of DOM contexts. Useful for capturing search results.
 
@@ -89,7 +92,7 @@ $ curl "localhost:3000/search?q=hellokitty"
 
 #### MIT License
 
-Copyright © 2015 &lt;dev@jpillora.com&gt;
+Copyright © 2016 &lt;dev@jpillora.com&gt;
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the

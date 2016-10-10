@@ -15,16 +15,21 @@ import (
 var VERSION = "0.0.0"
 
 type config struct {
-	ConfigFile string `type:"arg" help:"Path to JSON configuration file"`
-	Host       string `help:"Listening interface"`
-	Port       int    `help:"Listening port"`
+	*scraper.Handler `type:"embedded"`
+	ConfigFile       string `type:"arg" help:"Path to JSON configuration file"`
+	Host             string `help:"Listening interface"`
+	Port             int    `help:"Listening port"`
+	NoLog            bool   `help:"Disable access logs"`
 }
 
 func main() {
 
+	h := &scraper.Handler{Log: true}
+
 	c := config{
-		Host: "0.0.0.0",
-		Port: 3000,
+		Handler: h,
+		Host:    "0.0.0.0",
+		Port:    3000,
 	}
 
 	opts.New(&c).
@@ -32,7 +37,7 @@ func main() {
 		Version(VERSION).
 		Parse()
 
-	h := &scraper.Handler{Log: true}
+	h.Log = !c.NoLog
 
 	go func() {
 		for {
@@ -40,9 +45,9 @@ func main() {
 			signal.Notify(sig, syscall.SIGHUP)
 			<-sig
 			if err := h.LoadConfigFile(c.ConfigFile); err != nil {
-				log.Printf("failed to load configuration: %s", err)
+				log.Printf("[scraper] Failed to load configuration: %s", err)
 			} else {
-				log.Printf("successfully loaded new configuration")
+				log.Printf("[scraper] Successfully loaded new configuration")
 			}
 		}
 	}()
@@ -51,6 +56,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("listening on %d...", c.Port)
+	log.Printf("[scraper] Listening on %d...", c.Port)
 	log.Fatal(http.ListenAndServe(c.Host+":"+strconv.Itoa(c.Port), h))
 }

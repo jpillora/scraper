@@ -10,6 +10,8 @@ type Endpoint struct {
 	Headers map[string]string     `json:"headers,omitempty"`
 	List    string                `json:"list,omitempty"`
 	Result  map[string]Extractors `json:"result"`
+	//internal
+	debug bool
 }
 
 //extract 1 result using this endpoints extractor map
@@ -18,9 +20,9 @@ func (e *Endpoint) extract(sel *goquery.Selection) result {
 	for field, ext := range e.Result {
 		if v := ext.execute(sel); v != "" {
 			r[field] = v
-		} /* else {
-			log.Printf("missing %s", field)
-		}*/
+		} else if e.debug {
+			logf("missing %s", field)
+		}
 	}
 	return r
 }
