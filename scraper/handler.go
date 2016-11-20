@@ -190,6 +190,11 @@ func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
 	} else {
 		out = e.extract(sel)
 	}
-	b, _ := json.MarshalIndent(out, "", "  ")
-	w.Write(b)
+
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		w.Write([]byte("JSON Error: " + err.Error()))
+	}
 }
