@@ -19,10 +19,11 @@ type result map[string]string
 type Config map[string]*Endpoint
 
 type Handler struct {
-	Config Config `opts:"-"`
-	Auth   string `help:"Basic auth credentials <user>:<pass>"`
-	Log    bool   `opts:"-"`
-	Debug  bool   `help:"Enable debug output"`
+	Config  Config            `opts:"-"`
+	Headers map[string]string `opts:"-"`
+	Auth    string            `help:"Basic auth credentials <user>:<pass>"`
+	Log     bool              `opts:"-"`
+	Debug   bool              `help:"Enable debug output"`
 }
 
 func (h *Handler) LoadConfigFile(path string) error {
@@ -146,6 +147,11 @@ func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.Headers != nil {
+		for k, v := range h.Headers {
+			req.Header.Set(k, v)
+		}
+	}
 	if e.Headers != nil {
 		for k, v := range e.Headers {
 			req.Header.Set(k, v)
