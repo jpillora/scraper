@@ -47,7 +47,6 @@ func (h *Handler) LoadConfig(b []byte) error {
 			logf("Loaded endpoint: /%s", k)
 			// Copy the Debug attribute
 			e.Debug = h.Debug
-
 			// Copy the Header attributes (only if they are not yet set)
 			if e.Headers == nil {
 				e.Headers = h.Headers
@@ -69,9 +68,7 @@ func (h *Handler) LoadConfig(b []byte) error {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	//basic auth
+	// basic auth
 	if h.Auth != "" {
 		u, p, _ := r.BasicAuth()
 		if h.Auth != u+":"+p {
@@ -80,11 +77,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	//always JSON!
+	// always JSON!
 	w.Header().Set("Content-Type", "application/json")
-
-	//admin actions
+	// admin actions
 	if r.URL.Path == "" || r.URL.Path == "/" {
 		get := false
 		if r.Method == "GET" {
@@ -103,26 +98,43 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			get = true
 		}
-
 		if !get {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			w.Write(jsonerr(errors.New("Use GET or POST")))
+			return
 		}
 		b, _ := json.MarshalIndent(h.Config, "", "  ")
 		w.Write(b)
 		return
 	}
-	//search actions
-	id := r.URL.Path[1:] //exclude root slash
-
+	// endpoint id (excludes root slash)
+	id := r.URL.Path[1:]
+	// load endpoint
 	endpoint := h.Endpoint(id)
 	if endpoint == nil {
 		w.WriteHeader(404)
 		w.Write(jsonerr(fmt.Errorf("Endpoint /%s not found", id)))
 		return
 	}
-
-	h.execute(endpoint, w, r)
+	// convert url.Values into map[string]string
+	values := map[string]string{}
+	for k, v := range r.URL.Query() {
+		values[k] = v[0]
+	}
+	// execute query
+	res, err := endpoint.Execute(values)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(jsonerr(err))
+		return
+	}
+	// encode as JSON
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(res); err != nil {
+		w.Write([]byte("JSON Error: " + err.Error()))
+	}
 }
 
 // Endpoint will return the Handler's Endpoint from its Config
@@ -131,29 +143,4 @@ func (h *Handler) Endpoint(path string) *Endpoint {
 		return e
 	}
 	return nil
-}
-
-func (h *Handler) execute(e *Endpoint, w http.ResponseWriter, r *http.Request) {
-	URLValues := r.URL.Query()
-
-	// Transform url.Values into map[string]string
-	values := map[string]string{}
-	for k, v := range URLValues {
-		values[k] = v[0]
-	}
-
-	// Execute the endpoint
-	res, err := e.Execute(values)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write(jsonerr(err))
-		return
-	}
-
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(res); err != nil {
-		w.Write([]byte("JSON Error: " + err.Error()))
-	}
 }
