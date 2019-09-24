@@ -229,6 +229,17 @@ var generators = []struct {
 			}, nil
 		},
 	},
+	//trim generator
+	{
+		match: func(extractor string) bool {
+			return extractor == "trim()"
+		},
+		generate: func(_ string) (extractorFn, error) {
+			return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
+				return strings.TrimSpace(value), sel
+			}, nil
+		},
+	},
 	//query param generator
 	{
 		match: func(extractor string) bool {
