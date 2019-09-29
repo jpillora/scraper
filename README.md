@@ -82,6 +82,7 @@ $ curl "localhost:3000/search?query=hellokitty"
   * a regex in form `/abc/` - searches the text of the current DOM context (extracts the first group when provided).
   * a regex in form `s/abc/xyz/` - searches the text of the current DOM context and replaces with the provided text (sed-like syntax).
   * an attribute in the form `@abc` - gets the attribute `abc` from the DOM context.
+  * a function in the form `html()` - gets the DOM context as string
   * a query param in the form `query-param(abc)` - parses the current context as a URL and extracts the provided param
   * a css selector `abc` (if not in the forms above) alters the DOM context.
 * `list` - **Optional** A css selector used to split the root DOM context into a set of DOM contexts. Useful for capturing search results.
