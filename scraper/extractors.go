@@ -217,6 +217,18 @@ var generators = []struct {
 			}, nil
 		},
 	},
+	//html generator
+	{
+		match: func(extractor string) bool {
+			return extractor == "html()"
+		},
+		generate: func(_ string) (extractorFn, error) {
+			return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
+				html, _ := sel.Html()
+				return html, sel
+			}, nil
+		},
+	},
 	//query param generator
 	{
 		match: func(extractor string) bool {
