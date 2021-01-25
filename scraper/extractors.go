@@ -129,8 +129,6 @@ var generators = []struct {
 			//make attribute Extractor
 			return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 				value, _ = sel.Attr(attr)
-				// h, _ := sel.Html()
-				// logf("%s => %s\n%s\n\n", attr, value, h)
 				return value, sel
 			}, nil
 		},
