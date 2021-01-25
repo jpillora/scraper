@@ -12,7 +12,7 @@ import (
 	"github.com/jpillora/scraper/scraper"
 )
 
-var VERSION = "0.0.0"
+var version = "0.0.0"
 
 type config struct {
 	*scraper.Handler `type:"embedded"`
@@ -34,7 +34,7 @@ func main() {
 
 	opts.New(&c).
 		Repo("github.com/jpillora/scraper").
-		Version(VERSION).
+		Version(version).
 		Parse()
 
 	h.Log = !c.NoLog

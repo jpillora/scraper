@@ -1,10 +1,8 @@
 # scraper
 
+[![GoDoc](https://godoc.org/github.com/jpillora/scraper?status.svg)](https://godoc.org/github.com/jpillora/scraper) [![CI](https://github.com/jpillora/scraper/workflows/CI/badge.svg)](https://github.com/jpillora/scraper/actions?workflow=CI)
+
 A dual interface Go module for building simple web scrapers
-
-* Go: Use struct tags
-* CLI: JSON configuration to run a HTML⇒JSON API server
-
 ### Features
 
 * Go struct-tag interface
