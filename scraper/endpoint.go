@@ -55,30 +55,46 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 			return nil, err
 		}
 		body = strings.NewReader(s)
+		if e.Debug {
+			logf("req: %s %s (body size %d)", method, url, len(s))
+		}
+	} else {
+		if e.Debug {
+			logf("req: %s %s", method, url)
+		}
 	}
+	//show results
 	//create HTTP request
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}
+	h := http.Header{}
 	if e.Headers != nil {
 		for k, v := range e.Headers {
-			if e.Debug {
-				logf("use header %s=%s", k, v)
-			}
-			req.Header.Set(k, v)
+			h.Set(k, v)
 		}
 	}
+	//must set user agent, otherwise it will be "Go Client..."
+	if h.Get("User-Agent") == "" {
+		h.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.38 Safari/537.36 Brave/75")
+	}
+	if e.Debug {
+		for k := range h {
+			logf("header: %s=%s", k, h.Get(k))
+		}
+	}
+	req.Header = h
 	//make backend HTTP request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	//show results
 	if e.Debug {
-		logf("%s %s => %s", method, url, resp.Status)
+		logf("resp: %d (type: %s, len: %s)", resp.StatusCode,
+			resp.Header.Get("Content-Type"), resp.Header.Get("Content-Length"))
 	}
+	defer resp.Body.Close()
 	//parse HTML
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
