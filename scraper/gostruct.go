@@ -136,7 +136,7 @@ func newParamsFromStruct(v reflect.Value) map[string]string {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		n := f.Name
-		if n == "_" || n == "URL" || n == "Result" {
+		if n == "_" || n == "Method" || n == "URL" || n == "Result" {
 			continue
 		}
 		if f.Type.Kind() != reflect.String {
@@ -159,14 +159,16 @@ func setResultsToStruct(results []Result, v reflect.Value) error {
 		panic("expected Result struct or []struct")
 	}
 	st := r.Type
+	//single struct?
 	if st.Kind() != reflect.Slice {
 		return setResultToStruct(results, v)
 	}
 	//create empty slice
-	sv := reflect.New(st).Elem()
-	//loop results
+	sv := reflect.MakeSlice(st, len(results), len(results))
+	//take type of given struct
 	et := st.Elem()
-	for _, kvs := range results {
+	//loop results
+	for i, kvs := range results {
 		//create new struct per result
 		ev := reflect.New(et).Elem()
 		//set each kv
@@ -175,7 +177,7 @@ func setResultsToStruct(results []Result, v reflect.Value) error {
 			evf.Set(reflect.ValueOf(v))
 		}
 		//add new struct to new slice
-		sv = reflect.Append(sv, ev)
+		sv.Index(i).Set(ev)
 	}
 	//set results onto original gostruct
 	v.FieldByName("Result").Set(sv)
