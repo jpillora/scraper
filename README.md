@@ -1,11 +1,17 @@
 # scraper
 
-A web scraping module for building simple scrapers, using Go or the CLI HTML ⇒ JSON API server
+A dual interface Go module for building simple web scrapers
+
+* Go: Use struct tags
+* CLI: JSON configuration to run a HTML⇒JSON API server
 
 ### Features
 
-* Simple Go API
-* Single binary, with simple configuration
+* Go struct-tag interface
+* Command-line interface
+  * HTML⇒JSON API server
+  * Single binary
+  * Simple configuration
   * Zero-downtime config reload with `kill -s SIGHUP <scraper-pid>`
 
 ### Install
