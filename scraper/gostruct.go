@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 )
@@ -39,6 +40,9 @@ func newEndpointFromStruct(v reflect.Value) (*Endpoint, error) {
 	e := &Endpoint{}
 	//method
 	parseMethod(v, e)
+	parseHeaders(v, e)
+	parseBody(v, e)
+	parseDebug(v, e)
 	//url
 	if err := parseURL(v, e); err != nil {
 		return nil, err
@@ -47,11 +51,6 @@ func newEndpointFromStruct(v reflect.Value) (*Endpoint, error) {
 	if err := parseListExtractors(v, e); err != nil {
 		return nil, err
 	}
-	//debug setting
-	parseDebug(v, e)
-	//TODO:
-	//headers is the first http.Header field
-	//body is the first io.Reader
 	return e, nil
 
 }
@@ -63,6 +62,31 @@ func parseMethod(v reflect.Value, e *Endpoint) {
 		if s := v.FieldByName("Method").Interface().(string); s != "" {
 			e.Method = s
 		}
+	}
+}
+
+func parseHeaders(v reflect.Value, e *Endpoint) {
+	h := http.Header{}
+	hv := reflect.ValueOf(h)
+	t := v.Type()
+	u, ok := t.FieldByName("Headers")
+	if ok && u.Type == hv.Type() {
+		h, ok = v.FieldByName("Headers").Interface().(http.Header)
+		if ok && len(h) > 0 {
+			m := map[string]string{}
+			for k := range h {
+				m[k] = h.Get(k)
+			}
+			e.Headers = m
+		}
+	}
+}
+
+func parseBody(v reflect.Value, e *Endpoint) {
+	t := v.Type()
+	u, ok := t.FieldByName("Body")
+	if ok && u.Type.Kind() == reflect.String {
+		e.Body = v.FieldByName("Body").Interface().(string)
 	}
 }
 
@@ -136,7 +160,7 @@ func newParamsFromStruct(v reflect.Value) map[string]string {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		n := f.Name
-		if n == "_" || n == "Method" || n == "URL" || n == "Result" {
+		if n == "_" || n == "Method" || n == "URL" || n == "Body" || n == "Result" {
 			continue
 		}
 		if f.Type.Kind() != reflect.String {
