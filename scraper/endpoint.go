@@ -1,6 +1,7 @@
 package scraper
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -75,10 +76,6 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 			h.Set(k, v)
 		}
 	}
-	//must set user agent, otherwise it will be "Go Client..."
-	if h.Get("User-Agent") == "" {
-		h.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.38 Safari/537.36 Brave/75")
-	}
 	if e.Debug {
 		for k := range h {
 			logf("header: %s=%s", k, h.Get(k))
@@ -107,6 +104,11 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 		sels := sel.Find(e.List)
 		if e.Debug {
 			logf("list: %s => #%d elements", e.List, sels.Length())
+		}
+		if e.Debug && sels.Length() == 0 {
+			logf("no results, printing HTML")
+			h, _ := sel.Html()
+			fmt.Println(h)
 		}
 		sels.Each(func(i int, sel *goquery.Selection) {
 			r := e.extract(sel)
