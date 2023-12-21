@@ -4,6 +4,7 @@
 *.so
 
 proto/
+example/scraper.json
 
 # Folders
 _obj
