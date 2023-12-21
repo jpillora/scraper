@@ -15,29 +15,27 @@ import (
 var version = "0.0.0"
 
 type config struct {
-	*scraper.Handler `type:"embedded"`
-	ConfigFile       string `type:"arg" help:"Path to JSON configuration file"`
-	Host             string `help:"Listening interface"`
-	Port             int    `help:"Listening port"`
-	NoLog            bool   `help:"Disable access logs"`
+	scraper.Handler
+	ConfigFile string `opts:"mode=arg" help:"Path to JSON <config-file>"`
+	Host       string `help:"Listening interface"`
+	Port       int    `help:"Listening port"`
+	NoLog      bool   `help:"Disable access logs"`
 }
 
 func main() {
 
-	h := &scraper.Handler{Log: true}
-
 	c := config{
-		Handler: h,
+		Handler: scraper.Handler{Log: true},
 		Host:    "0.0.0.0",
 		Port:    3000,
 	}
+
+	h := &c.Handler
 
 	opts.New(&c).
 		Repo("github.com/jpillora/scraper").
 		Version(version).
 		Parse()
-
-	h.Log = !c.NoLog
 
 	go func() {
 		for {
@@ -52,6 +50,7 @@ func main() {
 		}
 	}()
 
+	h.Log = !c.NoLog
 	if err := h.LoadConfigFile(c.ConfigFile); err != nil {
 		log.Fatal(err)
 	}
