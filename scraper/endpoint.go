@@ -3,10 +3,11 @@ package scraper
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/enetx/g"
+	"github.com/enetx/surf"
 )
 
 //Endpoint represents a single remote endpoint. The performed
@@ -65,35 +66,66 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 		}
 	}
 	//show results
-	//create HTTP request
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		return nil, err
+	//create surf client
+	client := surf.NewClient()
+
+	//create surf request based on method
+	var surfReq *surf.Request
+	switch method {
+	case "GET":
+		surfReq = client.Get(g.String(url))
+	case "POST":
+		bodyData := ""
+		if body != nil {
+			// Read body content for POST
+			bodyBytes, err := io.ReadAll(body)
+			if err != nil {
+				return nil, err
+			}
+			bodyData = string(bodyBytes)
+		}
+		surfReq = client.Post(g.String(url), bodyData)
+	case "PUT":
+		bodyData := ""
+		if body != nil {
+			bodyBytes, err := io.ReadAll(body)
+			if err != nil {
+				return nil, err
+			}
+			bodyData = string(bodyBytes)
+		}
+		surfReq = client.Put(g.String(url), bodyData)
+	case "DELETE":
+		surfReq = client.Delete(g.String(url))
+	default:
+		surfReq = client.Get(g.String(url))
 	}
-	h := http.Header{}
+
+	//add headers
 	if e.Headers != nil {
+		headers := make([]any, 0, len(e.Headers)*2)
 		for k, v := range e.Headers {
-			h.Set(k, v)
+			headers = append(headers, k, v)
+			if e.Debug {
+				logf("header: %s=%s", k, v)
+			}
 		}
+		surfReq = surfReq.AddHeaders(headers...)
 	}
-	if e.Debug {
-		for k := range h {
-			logf("header: %s=%s", k, h.Get(k))
-		}
-	}
-	req.Header = h
+
 	//make backend HTTP request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
+	result := surfReq.Do()
+	if result.IsErr() {
+		return nil, result.Err()
 	}
-	defer resp.Body.Close()
+
+	resp := result.Ok()
 	if e.Debug {
-		logf("resp: %d (type: %s, len: %s)", resp.StatusCode,
-			resp.Header.Get("Content-Type"), resp.Header.Get("Content-Length"))
+		logf("resp: %d (type: %s)", resp.StatusCode,
+			resp.Headers.Get("Content-Type"))
 	}
 	//parse HTML
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.Body.String().Std()))
 	if err != nil {
 		return nil, err
 	}
