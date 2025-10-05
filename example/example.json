@@ -1,0 +1,9 @@
+{
+  "/test": {
+    "url": "https://example.com",
+    "result": {
+      "title": "h1",
+      "text": "p"
+    }
+  }
+}

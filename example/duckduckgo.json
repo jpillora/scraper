@@ -1,0 +1,11 @@
+{
+  "/search": {
+    "url": "https://html.duckduckgo.com/html/?q={{query}}",
+    "list": ".result",
+    "result": {
+      "title": ".result__title a",
+      "url": [".result__url", "@href"],
+      "snippet": ".result__snippet"
+    }
+  }
+}
