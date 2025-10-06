@@ -5,6 +5,7 @@
 
 proto/
 example/scraper.json
+example/cache.json
 
 # Folders
 _obj

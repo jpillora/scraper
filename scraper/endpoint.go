@@ -1,6 +1,7 @@
 package scraper
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/enetx/g"
 	"github.com/enetx/surf"
+	"github.com/itchyny/gojq"
 )
 
 //Endpoint represents a single remote endpoint. The performed
@@ -15,6 +17,7 @@ import (
 //URL. See documentation.
 type Endpoint struct {
 	Name    string                `json:"name,omitempty"`
+	Mode    string                `json:"mode,omitempty"`
 	Method  string                `json:"method,omitempty"`
 	URL     string                `json:"url"`
 	Body    string                `json:"body,omitempty"`
@@ -124,8 +127,25 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 		logf("resp: %d (type: %s)", resp.StatusCode,
 			resp.Headers.Get("Content-Type"))
 	}
+
+	// Choose extraction method based on mode
+	mode := e.Mode
+	if mode == "" {
+		mode = "html" // default to HTML mode
+	}
+
+	switch mode {
+	case "json":
+		return e.extractJSON(resp.Body.Reader)
+	default: // "html" or empty
+		return e.extractHTML(resp.Body.Reader)
+	}
+}
+
+// extractHTML extracts results from HTML response using CSS selectors
+func (e *Endpoint) extractHTML(body io.Reader) ([]Result, error) {
 	//parse HTML
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.Body.String().Std()))
+	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
 		return nil, err
 	}
@@ -154,4 +174,114 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 		results = append(results, e.extract(sel))
 	}
 	return results, nil
+}
+
+// extractJSON extracts results from JSON response using jq selectors
+func (e *Endpoint) extractJSON(body io.Reader) ([]Result, error) {
+	// Parse JSON
+	var data interface{}
+	if err := json.NewDecoder(body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	// Default list selector to "." if empty
+	listSelector := e.List
+	if listSelector == "" {
+		listSelector = "."
+	}
+
+	// Execute list selector
+	items, err := e.executeJSONSelector(data, listSelector)
+	if err != nil {
+		return nil, fmt.Errorf("list selector error: %w", err)
+	}
+
+	// Extract results from items
+	results := e.extractJSONResults(items)
+
+	if e.Debug {
+		logf("list: %s => #%d elements", listSelector, len(results))
+	}
+
+	return results, nil
+}
+
+// executeJSONSelector executes a jq selector and returns all matching items
+func (e *Endpoint) executeJSONSelector(data interface{}, selector string) ([]interface{}, error) {
+	query, err := gojq.Parse(selector)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse selector '%s': %w", selector, err)
+	}
+
+	var items []interface{}
+	iter := query.Run(data)
+	for {
+		v, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if err, ok := v.(error); ok {
+			return nil, err
+		}
+		items = append(items, v)
+	}
+
+	return items, nil
+}
+
+// extractJSONResults extracts result fields from each item
+func (e *Endpoint) extractJSONResults(items []interface{}) []Result {
+	var results []Result
+
+	for _, item := range items {
+		r := e.extractJSONResult(item)
+		if len(r) > 0 {
+			results = append(results, r)
+		}
+	}
+
+	return results
+}
+
+// extractJSONResult extracts result fields from a single item
+func (e *Endpoint) extractJSONResult(item interface{}) Result {
+	r := Result{}
+
+	for field, extractors := range e.Result {
+		if len(extractors) == 0 {
+			continue
+		}
+
+		selStr := extractors[0].val
+		val, err := e.extractJSONField(item, selStr)
+		if err != nil {
+			if e.Debug {
+				logf("failed to extract field %s: %v", field, err)
+			}
+			continue
+		}
+		r[field] = val
+	}
+
+	return r
+}
+
+// extractJSONField extracts a single field using a jq selector
+func (e *Endpoint) extractJSONField(data interface{}, selector string) (string, error) {
+	query, err := gojq.Parse(selector)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse selector '%s': %w", selector, err)
+	}
+
+	iter := query.Run(data)
+	v, ok := iter.Next()
+	if !ok {
+		return "", fmt.Errorf("no result from selector '%s'", selector)
+	}
+	if err, ok := v.(error); ok {
+		return "", err
+	}
+
+	// Convert result to string
+	return fmt.Sprintf("%v", v), nil
 }
