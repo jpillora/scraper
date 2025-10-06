@@ -7,5 +7,17 @@
       "url": [".result__url", "@href"],
       "snippet": ".result__snippet"
     }
+  },
+  "/api": {
+    "mode": "json",
+    "url": "https://api.duckduckgo.com/?q={{query}}&format=json",
+    "list": ".",
+    "result": {
+      "heading": ".Heading",
+      "abstract": ".AbstractText",
+      "source": ".AbstractSource",
+      "url": ".AbstractURL",
+      "image": ".Image"
+    }
   }
 }
