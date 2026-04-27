@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/jpillora/opts"
 	"github.com/jpillora/scraper/scraper"
@@ -23,13 +26,11 @@ type config struct {
 }
 
 func main() {
-
 	c := config{
 		Handler: scraper.Handler{Log: true},
 		Host:    "0.0.0.0",
 		Port:    3000,
 	}
-
 	h := &c.Handler
 
 	opts.New(&c).
@@ -37,10 +38,15 @@ func main() {
 		Version(version).
 		Parse()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGHUP)
+	h.Log = !c.NoLog
+	if err := h.LoadConfigFile(c.ConfigFile); err != nil {
+		log.Fatal(err)
+	}
+
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
 	go func() {
-		for range sig {
+		for range hup {
 			if err := h.LoadConfigFile(c.ConfigFile); err != nil {
 				log.Printf("[scraper] Failed to load configuration: %s", err)
 			} else {
@@ -49,11 +55,29 @@ func main() {
 		}
 	}()
 
-	h.Log = !c.NoLog
-	if err := h.LoadConfigFile(c.ConfigFile); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:              c.Host + ":" + strconv.Itoa(c.Port),
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-stop
+		log.Printf("[scraper] Shutting down...")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("[scraper] Shutdown error: %s", err)
+		}
+	}()
+
 	log.Printf("[scraper] Listening on %d...", c.Port)
-	log.Fatal(http.ListenAndServe(c.Host+":"+strconv.Itoa(c.Port), h))
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
 }

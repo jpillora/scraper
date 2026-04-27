@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/enetx/g"
@@ -185,14 +186,20 @@ func (e *Endpoint) extractJSON(body io.Reader) ([]Result, error) {
 	return results, nil
 }
 
-// extractJSONResult extracts result fields from a single item
+// extractJSONResult extracts result fields from a single item.
+// An extractor list is treated as a jq pipeline: ["a", "b", "c"] becomes
+// "a | b | c" — matching the chaining semantics of HTML-mode extractors.
 func (e *Endpoint) extractJSONResult(item any) Result {
 	r := Result{}
 	for field, extractors := range e.Result {
 		if len(extractors) == 0 {
 			continue
 		}
-		sel := extractors[0].val
+		parts := make([]string, len(extractors))
+		for i, ex := range extractors {
+			parts[i] = ex.val
+		}
+		sel := strings.Join(parts, " | ")
 		matches, err := runJQ(item, sel)
 		if err != nil {
 			if e.Debug {

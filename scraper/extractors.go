@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -92,6 +93,38 @@ func (ex Extractors) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strs)
 }
 
+type sedExpr struct {
+	match  string
+	repl   string
+	global bool
+}
+
+// parseSed accepts sed-style "s<delim>match<delim>repl<delim>[g]". The
+// delimiter is taken from the second character. Match cannot be empty.
+// Flags must be empty or "g". Returns ok=false on any deviation.
+func parseSed(s string) (sedExpr, bool) {
+	var z sedExpr
+	if len(s) < 5 || s[0] != 's' {
+		return z, false
+	}
+	delim := s[1]
+	if delim == 0 || delim == ' ' {
+		return z, false
+	}
+	parts := strings.Split(s, string(delim))
+	if len(parts) != 4 {
+		return z, false
+	}
+	if parts[1] == "" {
+		return z, false
+	}
+	flags := parts[3]
+	if flags != "" && flags != "g" {
+		return z, false
+	}
+	return sedExpr{match: parts[1], repl: parts[2], global: flags == "g"}, true
+}
+
 //selector Extractor
 var defaultGenerator = func(selstr string) (extractorFn, error) {
 	if err := checkSelector(selstr); err != nil {
@@ -161,45 +194,39 @@ var generators = []struct {
 			}, nil
 		},
 	},
-	//regex (sed syntax) replace generator
-	//TODO support more options and support $N replacements
+	//regex (sed syntax) replace generator: s<delim>match<delim>repl<delim>[g]
+	//repl supports Go regexp expansion syntax ($1, ${name}, $$ for literal $)
 	{
 		match: func(extractor string) bool {
-			if !strings.HasPrefix(extractor, "s") || len(extractor) < 5 {
-				return false
-			}
-			parts := strings.Split(extractor, string(extractor[1]))
-			if len(parts) != 4 {
-				return false
-			}
-			match := parts[1]
-			opts := parts[3]
-			return match != "" && (opts == "" || opts == "g")
+			_, ok := parseSed(extractor)
+			return ok
 		},
 		generate: func(extractor string) (extractorFn, error) {
-			parts := strings.Split(extractor, string(extractor[1]))
-			match := parts[1]
-			repl := parts[2]
-			opts := parts[3]
-			re, err := regexp.Compile(match)
-			if err != nil {
-				return nil, fmt.Errorf("invalid regex '%s' (%s)", match, err)
+			p, ok := parseSed(extractor)
+			if !ok {
+				return nil, fmt.Errorf("invalid s/.../.../ expression: %q", extractor)
 			}
-			all := opts == "g"
+			re, err := regexp.Compile(p.match)
+			if err != nil {
+				return nil, fmt.Errorf("invalid regex '%s' (%s)", p.match, err)
+			}
 			return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 				ctx := value
 				if ctx == "" {
 					ctx, _ = sel.Html()
 				}
-				i := 0
-				value = re.ReplaceAllStringFunc(ctx, func(in string) string {
-					first := i == 0
-					i++
-					if !all && !first {
-						return in
-					}
-					return repl
-				})
+				if p.global {
+					value = re.ReplaceAllString(ctx, p.repl)
+					return value, sel
+				}
+				// non-global: replace only the first match, preserving the rest verbatim
+				m := re.FindStringSubmatchIndex(ctx)
+				if m == nil {
+					value = ctx
+					return value, sel
+				}
+				expanded := re.ExpandString(nil, p.repl, ctx, m)
+				value = ctx[:m[0]] + string(expanded) + ctx[m[1]:]
 				return value, sel
 			}, nil
 		},
@@ -258,4 +285,34 @@ var generators = []struct {
 			}, nil
 		},
 	},
+	//join generator: join(sep) joins each matched element's text with sep.
+	//Replaces the default comma-join when applied to a multi-match selection.
+	//`sep` may be quoted ("|", "\n") or a bare token ( - , : ).
+	{
+		match: func(extractor string) bool {
+			return strings.HasPrefix(extractor, "join(") && strings.HasSuffix(extractor, ")")
+		},
+		generate: func(extractor string) (extractorFn, error) {
+			raw := strings.TrimSuffix(strings.TrimPrefix(extractor, "join("), ")")
+			sep, err := unquoteJoinSep(raw)
+			if err != nil {
+				return nil, fmt.Errorf("invalid join separator %q: %s", raw, err)
+			}
+			return func(_ string, sel *goquery.Selection) (string, *goquery.Selection) {
+				parts := make([]string, 0, sel.Length())
+				sel.Each(func(_ int, s *goquery.Selection) {
+					parts = append(parts, s.Text())
+				})
+				return strings.Join(parts, sep), sel
+			}, nil
+		},
+	},
+}
+
+// unquoteJoinSep accepts a Go-quoted string ("\n", "|") or a bare separator.
+func unquoteJoinSep(s string) (string, error) {
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'' || s[0] == '`') {
+		return strconv.Unquote(s)
+	}
+	return s, nil
 }
