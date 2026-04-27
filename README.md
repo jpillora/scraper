@@ -129,13 +129,21 @@ $ curl "localhost:3000/search?query=hellokitty"
 * `<method>` - The HTTP request method (defaults to `GET`)
 * `<extractor>` - A string in which must be one of:
   * a regex in form `/abc/` - searches the text of the current DOM context (extracts the first group when provided).
-  * a regex in form `s/abc/xyz/` - searches the text of the current DOM context and replaces with the provided text (sed-like syntax).
+  * a regex in form `s/abc/xyz/` - searches the text of the current DOM context and replaces with the provided text (sed-like syntax). Supports `$N` backreferences (`s/v(\d+)/version-$1/`) and `g` flag for replace-all (`s/a/b/g`). Any single character may be used as the delimiter (`s|/|-|g`).
   * an attribute in the form `@abc` - gets the attribute `abc` from the DOM context.
   * a function in the form `html()` - gets the DOM context as string
   * a function in the form `trim()` - trims space from the beginning and the end of the string
+  * a function in the form `first()` - narrows the selection to the first matched element.
+  * a function in the form `join(sep)` - joins the text of every matched element with `sep`. Quoted separators (`join("\n")`, `join(", ")`) are unescaped via Go's strconv rules; bare separators (`join(|)`) are taken literally.
   * a query param in the form `query-param(abc)` - parses the current context as a URL and extracts the provided param
   * a css selector `abc` (if not in the forms above) alters the DOM context.
 * `list` - **Optional** A css selector used to split the root DOM context into a set of DOM contexts. Useful for capturing search results.
+
+Multiple matched elements are comma-joined by default; use `join(sep)` for a different separator. Repeated query params (`?tag=a&tag=b`) are collapsed to a comma-joined value before template substitution.
+
+#### JSON mode
+
+Setting `"mode": "json"` switches the endpoint to a JSON-API scraper. `list` and the result fields are then [jq](https://github.com/itchyny/gojq) selectors instead of CSS selectors. As with HTML mode, fields can be a string or an array; arrays are joined with ` | ` to form a jq pipeline (`[".count", "tonumber"]` becomes `.count | tonumber`).
 
 ### Go API
 

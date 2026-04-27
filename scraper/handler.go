@@ -119,9 +119,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write(jsonerr(fmt.Errorf("endpoint /%s not found", id)))
 		return
 	}
+	// Repeated query params (?tag=a&tag=b) collapse to a comma-joined value
+	// (?tag=a,b). The template engine handles URL-escaping when the param sits
+	// after the URL's `?`, so the resulting string is still a valid query.
 	values := map[string]string{}
 	for k, v := range r.URL.Query() {
-		values[k] = v[0]
+		values[k] = strings.Join(v, ",")
 	}
 	res, err := endpoint.Execute(values)
 	if err != nil {
