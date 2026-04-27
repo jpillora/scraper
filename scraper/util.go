@@ -14,20 +14,23 @@ import (
 
 var templateRe = regexp.MustCompile(`\{\{\s*(\w+)\s*(:(\w+))?\s*\}\}`)
 
-func template(isurl bool, str string, vars map[string]string) (out string, err error) {
-	out = templateRe.ReplaceAllStringFunc(str, func(key string) string {
+func template(isurl bool, str string, vars map[string]string) (string, error) {
+	var err error
+	out := templateRe.ReplaceAllStringFunc(str, func(key string) string {
+		if err != nil {
+			return ""
+		}
 		m := templateRe.FindStringSubmatch(key)
 		k := m[1]
 		value, ok := vars[k]
-		//missing - apply defaults or error
 		if !ok {
 			if m[3] != "" {
 				value = m[3]
 			} else {
-				err = errors.New("Missing param: " + k)
+				err = errors.New("missing param: " + k)
+				return ""
 			}
 		}
-		//determine if we need to escape
 		if isurl {
 			queryi := strings.Index(str, "?")
 			keyi := strings.Index(str, key)
@@ -37,7 +40,10 @@ func template(isurl bool, str string, vars map[string]string) (out string, err e
 		}
 		return value
 	})
-	return
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
 func checkSelector(s string) (err error) {

@@ -37,11 +37,10 @@ func main() {
 		Version(version).
 		Parse()
 
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP)
 	go func() {
-		for {
-			sig := make(chan os.Signal, 1)
-			signal.Notify(sig, syscall.SIGHUP)
-			<-sig
+		for range sig {
 			if err := h.LoadConfigFile(c.ConfigFile); err != nil {
 				log.Printf("[scraper] Failed to load configuration: %s", err)
 			} else {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
+	"net/http"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/enetx/g"
@@ -12,9 +12,12 @@ import (
 	"github.com/itchyny/gojq"
 )
 
-//Endpoint represents a single remote endpoint. The performed
-//query can be modified between each call by parameterising
-//URL. See documentation.
+// shared HTTP client — reuses connection pool across requests
+var client = surf.NewClient()
+
+// Endpoint represents a single remote endpoint. The performed
+// query can be modified between each call by parameterising
+// URL. See documentation.
 type Endpoint struct {
 	Name    string                `json:"name,omitempty"`
 	Mode    string                `json:"mode,omitempty"`
@@ -27,7 +30,7 @@ type Endpoint struct {
 	Debug   bool
 }
 
-//extract 1 result using this endpoints extractor map
+// extract 1 result using this endpoints extractor map
 func (e *Endpoint) extract(sel *goquery.Selection) Result {
 	r := Result{}
 	for field, ext := range e.Result {
@@ -42,70 +45,31 @@ func (e *Endpoint) extract(sel *goquery.Selection) Result {
 
 // Execute will execute an Endpoint with the given params
 func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
-	//render url using params
 	url, err := template(true, e.URL, params)
 	if err != nil {
 		return nil, err
 	}
-	//default method
 	method := e.Method
 	if method == "" {
-		method = "GET"
+		method = http.MethodGet
 	}
-	//render body (if set)
-	body := io.Reader(nil)
+	req, err := newRequest(method, url)
+	if err != nil {
+		return nil, err
+	}
 	if e.Body != "" {
-		s, err := template(true, e.Body, params)
+		body, err := template(true, e.Body, params)
 		if err != nil {
 			return nil, err
 		}
-		body = strings.NewReader(s)
+		req = req.Body(body)
 		if e.Debug {
-			logf("req: %s %s (body size %d)", method, url, len(s))
+			logf("req: %s %s (body size %d)", method, url, len(body))
 		}
-	} else {
-		if e.Debug {
-			logf("req: %s %s", method, url)
-		}
+	} else if e.Debug {
+		logf("req: %s %s", method, url)
 	}
-	//show results
-	//create surf client
-	client := surf.NewClient()
-
-	//create surf request based on method
-	var surfReq *surf.Request
-	switch method {
-	case "GET":
-		surfReq = client.Get(g.String(url))
-	case "POST":
-		bodyData := ""
-		if body != nil {
-			// Read body content for POST
-			bodyBytes, err := io.ReadAll(body)
-			if err != nil {
-				return nil, err
-			}
-			bodyData = string(bodyBytes)
-		}
-		surfReq = client.Post(g.String(url), bodyData)
-	case "PUT":
-		bodyData := ""
-		if body != nil {
-			bodyBytes, err := io.ReadAll(body)
-			if err != nil {
-				return nil, err
-			}
-			bodyData = string(bodyBytes)
-		}
-		surfReq = client.Put(g.String(url), bodyData)
-	case "DELETE":
-		surfReq = client.Delete(g.String(url))
-	default:
-		surfReq = client.Get(g.String(url))
-	}
-
-	//add headers
-	if e.Headers != nil {
+	if len(e.Headers) > 0 {
 		headers := make([]any, 0, len(e.Headers)*2)
 		for k, v := range e.Headers {
 			headers = append(headers, k, v)
@@ -113,54 +77,72 @@ func (e *Endpoint) Execute(params map[string]string) ([]Result, error) {
 				logf("header: %s=%s", k, v)
 			}
 		}
-		surfReq = surfReq.AddHeaders(headers...)
+		req = req.AddHeaders(headers...)
 	}
 
-	//make backend HTTP request
-	result := surfReq.Do()
+	result := req.Do()
 	if result.IsErr() {
 		return nil, result.Err()
 	}
-
 	resp := result.Ok()
+	defer resp.Body.Close()
+
 	if e.Debug {
-		logf("resp: %d (type: %s)", resp.StatusCode,
-			resp.Headers.Get("Content-Type"))
+		logf("resp: %d (type: %s)", resp.StatusCode, resp.Headers.Get("Content-Type"))
 	}
 
-	// Choose extraction method based on mode
 	mode := e.Mode
 	if mode == "" {
-		mode = "html" // default to HTML mode
+		mode = "html"
 	}
-
 	switch mode {
+	case "html":
+		return e.extractHTML(resp.Body.Reader)
 	case "json":
 		return e.extractJSON(resp.Body.Reader)
-	default: // "html" or empty
-		return e.extractHTML(resp.Body.Reader)
+	default:
+		return nil, fmt.Errorf("unknown mode %q (expected \"html\" or \"json\")", mode)
 	}
 }
 
-// extractHTML extracts results from HTML response using CSS selectors
+// newRequest builds a surf request for the given method. surf no longer
+// exposes a generic dispatch — each verb has its own builder method.
+func newRequest(method, url string) (*surf.Request, error) {
+	u := g.String(url)
+	switch method {
+	case http.MethodGet:
+		return client.Get(u), nil
+	case http.MethodPost:
+		return client.Post(u), nil
+	case http.MethodPut:
+		return client.Put(u), nil
+	case http.MethodPatch:
+		return client.Patch(u), nil
+	case http.MethodDelete:
+		return client.Delete(u), nil
+	case http.MethodHead:
+		return client.Head(u), nil
+	}
+	return nil, fmt.Errorf("unsupported HTTP method %q", method)
+}
+
+// extractHTML extracts results from an HTML response using CSS selectors
 func (e *Endpoint) extractHTML(body io.Reader) ([]Result, error) {
-	//parse HTML
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
 		return nil, err
 	}
 	sel := doc.Selection
-	//results will be either a list of results, or a single result
 	var results []Result
 	if e.List != "" {
 		sels := sel.Find(e.List)
 		if e.Debug {
 			logf("list: %s => #%d elements", e.List, sels.Length())
-		}
-		if e.Debug && sels.Length() == 0 {
-			logf("no results, printing HTML")
-			h, _ := sel.Html()
-			fmt.Println(h)
+			if sels.Length() == 0 {
+				logf("no results, printing HTML")
+				h, _ := sel.Html()
+				fmt.Println(h)
+			}
 		}
 		sels.Each(func(i int, sel *goquery.Selection) {
 			r := e.extract(sel)
@@ -176,44 +158,63 @@ func (e *Endpoint) extractHTML(body io.Reader) ([]Result, error) {
 	return results, nil
 }
 
-// extractJSON extracts results from JSON response using jq selectors
+// extractJSON extracts results from a JSON response using jq selectors
 func (e *Endpoint) extractJSON(body io.Reader) ([]Result, error) {
-	// Parse JSON
-	var data interface{}
+	var data any
 	if err := json.NewDecoder(body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
-
-	// Default list selector to "." if empty
 	listSelector := e.List
 	if listSelector == "" {
 		listSelector = "."
 	}
-
-	// Execute list selector
-	items, err := e.executeJSONSelector(data, listSelector)
+	items, err := runJQ(data, listSelector)
 	if err != nil {
-		return nil, fmt.Errorf("list selector error: %w", err)
+		return nil, fmt.Errorf("list selector %q: %w", listSelector, err)
 	}
-
-	// Extract results from items
-	results := e.extractJSONResults(items)
-
 	if e.Debug {
-		logf("list: %s => #%d elements", listSelector, len(results))
+		logf("list: %s => #%d elements", listSelector, len(items))
 	}
-
+	results := make([]Result, 0, len(items))
+	for _, item := range items {
+		r := e.extractJSONResult(item)
+		if len(r) > 0 {
+			results = append(results, r)
+		}
+	}
 	return results, nil
 }
 
-// executeJSONSelector executes a jq selector and returns all matching items
-func (e *Endpoint) executeJSONSelector(data interface{}, selector string) ([]interface{}, error) {
+// extractJSONResult extracts result fields from a single item
+func (e *Endpoint) extractJSONResult(item any) Result {
+	r := Result{}
+	for field, extractors := range e.Result {
+		if len(extractors) == 0 {
+			continue
+		}
+		sel := extractors[0].val
+		matches, err := runJQ(item, sel)
+		if err != nil {
+			if e.Debug {
+				logf("field %q (%s): %v", field, sel, err)
+			}
+			continue
+		}
+		if len(matches) == 0 {
+			continue
+		}
+		r[field] = jsonValueString(matches[0])
+	}
+	return r
+}
+
+// runJQ compiles and runs a jq selector against data, returning all matches.
+func runJQ(data any, selector string) ([]any, error) {
 	query, err := gojq.Parse(selector)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse selector '%s': %w", selector, err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
-
-	var items []interface{}
+	var items []any
 	iter := query.Run(data)
 	for {
 		v, ok := iter.Next()
@@ -225,63 +226,36 @@ func (e *Endpoint) executeJSONSelector(data interface{}, selector string) ([]int
 		}
 		items = append(items, v)
 	}
-
 	return items, nil
 }
 
-// extractJSONResults extracts result fields from each item
-func (e *Endpoint) extractJSONResults(items []interface{}) []Result {
-	var results []Result
-
-	for _, item := range items {
-		r := e.extractJSONResult(item)
-		if len(r) > 0 {
-			results = append(results, r)
+// jsonValueString converts a jq result value into a string suitable for
+// inclusion in a Result map. Scalars use their natural string form;
+// objects/arrays are re-encoded as JSON.
+func jsonValueString(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case bool:
+		if x {
+			return "true"
 		}
-	}
-
-	return results
-}
-
-// extractJSONResult extracts result fields from a single item
-func (e *Endpoint) extractJSONResult(item interface{}) Result {
-	r := Result{}
-
-	for field, extractors := range e.Result {
-		if len(extractors) == 0 {
-			continue
+		return "false"
+	case float64:
+		// jq numbers come back as float64; prefer integer formatting when exact.
+		if x == float64(int64(x)) {
+			return fmt.Sprintf("%d", int64(x))
 		}
-
-		selStr := extractors[0].val
-		val, err := e.extractJSONField(item, selStr)
+		return fmt.Sprintf("%g", x)
+	case int, int64:
+		return fmt.Sprintf("%d", x)
+	default:
+		b, err := json.Marshal(x)
 		if err != nil {
-			if e.Debug {
-				logf("failed to extract field %s: %v", field, err)
-			}
-			continue
+			return fmt.Sprintf("%v", x)
 		}
-		r[field] = val
+		return string(b)
 	}
-
-	return r
-}
-
-// extractJSONField extracts a single field using a jq selector
-func (e *Endpoint) extractJSONField(data interface{}, selector string) (string, error) {
-	query, err := gojq.Parse(selector)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse selector '%s': %w", selector, err)
-	}
-
-	iter := query.Run(data)
-	v, ok := iter.Next()
-	if !ok {
-		return "", fmt.Errorf("no result from selector '%s'", selector)
-	}
-	if err, ok := v.(error); ok {
-		return "", err
-	}
-
-	// Convert result to string
-	return fmt.Sprintf("%v", v), nil
 }
