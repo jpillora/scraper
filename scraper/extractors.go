@@ -95,7 +95,7 @@ func (ex Extractors) MarshalJSON() ([]byte, error) {
 //selector Extractor
 var defaultGenerator = func(selstr string) (extractorFn, error) {
 	if err := checkSelector(selstr); err != nil {
-		return nil, fmt.Errorf("Invalid selector: %s", err)
+		return nil, fmt.Errorf("invalid selector: %s", err)
 	}
 	return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 		s := sel.Find(selstr)
@@ -142,7 +142,7 @@ var generators = []struct {
 			reStr := strings.TrimSuffix(strings.TrimPrefix(extractor, "/"), "/")
 			re, err := regexp.Compile(reStr)
 			if err != nil {
-				return nil, fmt.Errorf("Invalid regex '%s': %s", reStr, err)
+				return nil, fmt.Errorf("invalid regex '%s': %s", reStr, err)
 			}
 			return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {
 				ctx := value
@@ -183,7 +183,7 @@ var generators = []struct {
 			opts := parts[3]
 			re, err := regexp.Compile(match)
 			if err != nil {
-				return nil, fmt.Errorf("Invalid regex '%s' (%s)", match, err)
+				return nil, fmt.Errorf("invalid regex '%s' (%s)", match, err)
 			}
 			all := opts == "g"
 			return func(value string, sel *goquery.Selection) (string, *goquery.Selection) {

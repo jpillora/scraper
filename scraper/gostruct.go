@@ -14,7 +14,7 @@ import (
 func Execute(gostruct interface{}) error {
 	//must be struct pointer
 	v := reflect.ValueOf(gostruct)
-	if v.Type().Kind() != reflect.Ptr && v.Type().Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
 		return errors.New("expected struct pointer")
 	}
 	v = v.Elem()
