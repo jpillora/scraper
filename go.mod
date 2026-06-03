@@ -23,7 +23,7 @@ require (
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.59.0 // indirect
+	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/refraction-networking/utls v1.8.3-0.20260301010127-aa6edf4b11af // indirect
 	github.com/wzshiming/socks5 v0.7.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
